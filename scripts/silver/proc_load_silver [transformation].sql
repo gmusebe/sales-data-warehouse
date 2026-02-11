@@ -75,3 +75,65 @@ SELECT
 FROM bronze.crm_prd_info;
 
 
+INSERT INTO silver.crm_sales_details(
+    sls_ord_num,
+    sls_prd_key,
+    sls_cust_id,
+    sls_order_dt,
+    sls_ship_dt,
+    sls_due_dt,
+    sls_sales,
+    sls_quantity,
+    sls_price
+)
+SELECT
+    sls_ord_num,
+    sls_prd_key,
+    sls_cust_id,
+    CASE
+        WHEN sls_order_dt = 0 OR LEN(sls_order_dt) != 8 THEN NULL
+        ELSE CAST(sls_order_dt AS DATE)
+    END sls_order_dt,
+    sls_ship_dt,
+    sls_due_dt,
+    -- If Sales is negative, zero or null, derive it using Quantity and Price
+    -- If Price is zero or null, calculate using Quantity and Sales
+    -- If Price is negative, convert to a positive
+    CASE
+        WHEN sls_sales IS NULL OR sls_sales <= 0 OR sls_sales != sls_quantity * ABS(sls_price)
+            THEN sls_quantity * ABS(sls_price)
+        ELSE sls_sales
+    END AS sls_sales,
+    sls_quantity,
+    CASE
+        WHEN sls_price IS NULL OR sls_price <= 0
+            THEN sls_sales / NULLIF(sls_quantity, 0)
+		ELSE sls_price  -- Derive price if original value is invalid
+	END AS sls_price
+FROM bronze.crm_sales_details
+
+SELECT  DISTINCT
+    sls_sales,
+    sls_quantity,
+    sls_price
+FROM silver.crm_sales_details
+WHERE sls_sales != sls_quantity * sls_price
+OR sls_sales IS NULL OR sls_quantity IS NULL OR sls_price IS NULL
+OR sls_sales <= 0 OR sls_quantity <= 0 OR sls_price <= 0
+ORDER BY sls_sales, sls_quantity, sls_price
+
+
+INSERT INTO silver.erp_cust_az12(cid, bdate, gen)
+SELECT
+    CASE WHEN cid LIKE 'NAS%' THEN SUBSTRING(cid, 4, LEN(cid))
+    ELSE cid
+    END cid,
+    CASE WHEN bdate > GETDATE() THEN NULL
+    ELSE bdate
+    END bdate,
+    CASE
+        WHEN UPPER(TRIM(gen)) IN ('F', 'FEMALE') THEN 'Female'
+        WHEN UPPER(TRIM(gen)) IN ('M', 'MALE') THEN 'Male'
+        ELse 'n/a'
+    END gen
+FROM bronze.erp_cust_az12
