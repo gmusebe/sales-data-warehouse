@@ -1,4 +1,13 @@
--- Data Quality Checks
+/*
+===============================================================================
+Cleaning the data - Data Quality Checks
+===============================================================================
+Script Purpose:
+    This stored procedure performs the Data Quality checks
+===============================================================================
+*/
+
+
 
 -- Check For Nulls or Duplicates in Primary Key
 -- Expectations: No Result
@@ -53,8 +62,7 @@ FROM bronze.crm_prd_info;
 
 
 -- Check for NULLs and Negative Numbers
--- Expectation: No Resuly
-
+-- Expectation: No Result
 SELECT prd_cost
 FROM bronze.crm_prd_info
 WHERE prd_cost < 0 OR prd_cost IS NULL
@@ -80,3 +88,50 @@ WHERE prd_key IN ('AC-HE-HL-U509-R', 'AC-HE-HL-U509')
 
 SELECT *
 FROM silver.crm_prd_info
+
+
+/* Check for Unwanted Spaces */
+SELECT
+    sls_ord_num,
+    sls_prd_key,
+    sls_cust_id,
+    sls_order_dt,
+    sls_ship_dt,
+    sls_due_dt,
+    sls_sales,
+    sls_quantity,
+    sls_price
+FROM bronze.crm_sales_details
+WHERE sls_ord_num != TRIM(sls_ord_num)
+
+
+SELECT
+    NULLIF(CAST(sls_order_dt AS INT), 0) sls_order_dt
+FROM bronze.crm_sales_details
+WHERE sls_order_dt <= 0
+OR LEN(sls_order_dt) != 8
+OR sls_order_dt > 20500101
+OR sls_order_dt < 19000101
+
+-- Invalid Date
+SELECT
+    *
+FROM silver.crm_sales_details
+WHERE sls_order_dt > sls_ship_dt;
+
+-- Check Data Consistency: Between Sales, Quantity and Price
+-- >> Sales = Quantity * Price
+-- >> Values must not be NULL, zero, or negative
+
+SELECT 
+    sls_sales,
+    sls_quantity,
+    sls_price
+FROM bronze.crm_sales_details
+WHERE sls_sales != sls_quantity * sls_price
+OR sls_sales IS NULL OR sls_quantity IS NULL OR sls_price IS NULL
+OR sls_sales <= 0 OR sls_quantity <= 0 OR sls_price <= 0
+ORDER BY sls_sales, sls_quantity, sls_price
+
+-- CASE WHEN 
+-- DATA NORMALISATION
